@@ -1,0 +1,56 @@
+1. Requisitos
+Teléfono
+• arm64 (arm64-v8a) con Android 13 o superior.
+• Driver Vulkan 1.3 (Adreno 7xx o Mali G7xx / Immortalis suelen cumplirlo; no confirmado).
+• 8 GB de RAM o más (el juego usa 3,2 GB de heap).
+• Unos 3 GB libres para los archivos del juego, más 160 MB del APK.
+• Depuración USB o inalámbrica activada.
+Mac (Apple Silicon)
+• Xcode command-line tools, Homebrew, Python 3.12 o superior.
+• brew install openjdk@21 cmake ninja
+• Android SDK command-line tools.
+Tus archivos del juego
+• Dump extraído de Super Mario Maker 2: RomFS del juego base, y ExeFS + RomFS de la actualización 3.0.3.
+• Tu prod.keys y el firmware de tu consola (carpeta de archivos .nca), para las fuentes.
+2. Colocar el dump
+Por defecto el proyecto busca en ~/smm-work/extracted/ estas carpetas:
+• smm2-romfs
+• smm2-v303-exefs (con main, sdk, rtld, main.npdm)
+• smm2-v303-romfs
+Si las tienes en otro sitio, pasa DUMP_BASE_ROMFS=, DUMP_UPDATE_EXEFS= y DUMP_UPDATE_ROMFS= a make.
+3. Preparar el entorno
+cd smm2recomp-0.4.6
+make -C recomp venv
+
+sdkmanager "platform-tools" "build-tools;36.1.0" "platforms;android-36" "ndk;29.0.14206865"
+export ANDROID_HOME=<ruta del sdk>
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+
+recomp/tools/android_deps.sh <carpeta-deps>
+El último comando (una sola vez) descarga y compila SDL3, shaderc y VMA para arm64-v8a. Necesita internet.
+4. Fuentes y datos del sistema
+Sin las fuentes, el juego se detiene en la pantalla de título.
+cd recomp
+tools/venv/bin/python games/smm2/sysdata.py --firmware <carpeta de NCA> --keys <prod.keys> --data private/smm2
+5. Generar el código y el APK
+make -C recomp GAME=smm2 setup
+make -C recomp TARGET=android-arm64 GAME=smm2 gen
+make -C recomp TARGET=android-arm64 GAME=smm2 ANDROID_HOME=$ANDROID_HOME DEPS=<carpeta-deps> -j apk
+Resultado: build/smm2-android-arm64-0x800000000/SMM2Recomp.apk (unos 160 MB). La primera vez tarda entre 10 y 20 minutos. El APK se firma con una clave de depuración local.
+6. Instalar y copiar los datos
+Conecta el teléfono (adb devices debe verlo). Si hay varios dispositivos, usa ADB_SERIAL=<serie>.
+make -C recomp TARGET=android-arm64 GAME=smm2 ANDROID_HOME=$ANDROID_HOME DEPS=<carpeta-deps> install push-data
+push-data copia unos 3 GB a /sdcard/Android/data/org.smcraft.smm2recomp/files/ (extracted/, fonts/, sysdata/ y opcionalmente save/). Tarda varios minutos.
+7. Si no arranca
+• "Permission denied" en el log (Android 11 o superior): usa la carpeta interna de la app.
+  RECOMP_ANDROID_DEBUGGABLE=1 make -C recomp TARGET=android-arm64 GAME=smm2 ANDROID_HOME=$ANDROID_HOME DEPS=<carpeta-deps> apk install
+  make -C recomp TARGET=android-arm64 GAME=smm2 ANDROID_HOME=$ANDROID_HOME DEPS=<carpeta-deps> PUSH_INTERNAL=1 push-data
+• Logs: smm2recomp.log en la carpeta de la app, o adb logcat -s smm2recomp.
+• Se detiene al iniciar: puede ser la reserva de memoria del guest (ventana en 0x800000000). El log lo indica.
+• Pantalla en negro o fallos gráficos: comprueba que tu GPU soporta Vulkan 1.3 con dynamic rendering, timeline semaphores, almacenamiento de 8 bits y scalar block layout.
+• Variables de entorno: una app no las tiene; ponlas una por línea (NOMBRE=valor) en un archivo recomp.env en la misma carpeta.
+8. Controles
+• Los toques funcionan como la pantalla táctil de la consola.
+• Mando en pantalla (stick, ABXY, L/R/ZL/ZR, +/−), oculto cuando hay un mando conectado.
+• Mandos Bluetooth o USB a través de SDL (sin probar).
+• El botón o gesto Atrás abre y cierra el menú superpuesto.
